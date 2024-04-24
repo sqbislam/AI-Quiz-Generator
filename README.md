@@ -11,6 +11,7 @@ You can take the quiz and see if you can answer all of them correctly. Each answ
 - Install necessary packages using `pip install -r requirements.txt`
 - Run application using `streamlit run app/main.py`
 
+[Preview Image](./assets/quiz-builder.png)
 
 ### Under the hood 
 It uses Google Gemini as the LLM and uses a chromadb vector database for the knowledge base embedding.
