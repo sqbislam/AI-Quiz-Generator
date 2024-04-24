@@ -1,11 +1,9 @@
-import streamlit as st
+
 import os
 import sys
 import json
+import re
 sys.path.append(os.path.abspath('../../'))
-from tasks.task_3.task_3 import DocumentProcessor
-from tasks.task_4.task_4 import EmbeddingClient
-from tasks.task_5.task_5 import ChromaCollectionCreator
 
 from langchain_core.prompts import PromptTemplate
 from langchain_google_vertexai import VertexAI
@@ -41,7 +39,7 @@ class QuizGenerator:
             3. Provide the correct answer for the question from the list of answers as key "answer"
             4. Provide an explanation as to why the answer is correct as key "explanation"
             
-            You must respond as a JSON object with the following structure:
+            You must respond as a JSON object with the following structure. Do not include any trailing or leading character before or after the curly braces "{{}}":
             {{
                 "question": "<question>",
                 "choices": [
@@ -72,7 +70,27 @@ class QuizGenerator:
             max_output_tokens = 500
         )
 
-    def generate_question_with_vectorstore(self):
+    def clean_json_string(self, json_str):
+        """Clean JSON String capturing only the value between curly braces
+
+        Args:
+            json_str (str): uncleaned string 
+
+        Returns:
+            str: cleaned string
+        """
+        # Define a regex pattern to match everything before and after the curly braces
+        pattern = r'^.*?({.*}).*$'
+        # Use re.findall to extract the JSON part from the string
+        matches = re.findall(pattern, json_str, re.DOTALL)
+        if matches:
+            # If there's a match, return the first one (should be the JSON)
+            return matches[0]
+        else:
+            # If no match is found, return None
+            return None
+    
+    async def generate_question_with_vectorstore(self):
         """
         Generates a quiz question based on the topic provided using a vectorstore
 
@@ -103,60 +121,36 @@ class QuizGenerator:
         response = chain.invoke(self.topic)
         return response
 
-    def generate_quiz(self) -> list:
+    async def generate_quiz(self) -> list:
         """
-        Task: Generate a list of unique quiz questions based on the specified topic and number of questions.
-
-        This method orchestrates the quiz generation process by utilizing the `generate_question_with_vectorstore` method to generate each question and the `validate_question` method to ensure its uniqueness before adding it to the quiz.
-
-        Steps:
-            1. Initialize an empty list to store the unique quiz questions.
-            2. Loop through the desired number of questions (`num_questions`), generating each question via `generate_question_with_vectorstore`.
-            3. For each generated question, validate its uniqueness using `validate_question`.
-            4. If the question is unique, add it to the quiz; if not, attempt to generate a new question (consider implementing a retry limit).
-            5. Return the compiled list of unique quiz questions.
-
-        Returns:
-        - A list of dictionaries, where each dictionary represents a unique quiz question generated based on the topic.
-
-        Note: This method relies on `generate_question_with_vectorstore` for question generation and `validate_question` for ensuring question uniqueness. Ensure `question_bank` is properly initialized and managed.
+        Generate a list of unique quiz questions based on the specified topic and number of questions.
         """
         self.question_bank = [] # Reset the question bank
 
         for _ in range(self.num_questions):
-            ##### YOUR CODE HERE #####
-            question_str = # Use class method to generate question
-            
-            ##### YOUR CODE HERE #####
+            question_str = await self.generate_question_with_vectorstore()
             try:
                 # Convert the JSON String to a dictionary
+                cleaned_str = self.clean_json_string(question_str)
+                question=json.loads(cleaned_str)
             except json.JSONDecodeError:
                 print("Failed to decode question JSON.")
                 continue  # Skip this iteration if JSON decoding fails
-            ##### YOUR CODE HERE #####
-
-            ##### YOUR CODE HERE #####
+ 
             # Validate the question using the validate_question method
             if self.validate_question(question):
                 print("Successfully generated unique question")
                 # Add the valid and unique question to the bank
+                self.question_bank.append(question)
             else:
                 print("Duplicate or invalid question detected.")
-            ##### YOUR CODE HERE #####
+      
 
         return self.question_bank
 
     def validate_question(self, question: dict) -> bool:
         """
-        Task: Validate a quiz question for uniqueness within the generated quiz.
-
-        This method checks if the provided question (as a dictionary) is unique based on its text content compared to previously generated questions stored in `question_bank`. The goal is to ensure that no duplicate questions are added to the quiz.
-
-        Steps:
-            1. Extract the question text from the provided dictionary.
-            2. Iterate over the existing questions in `question_bank` and compare their texts to the current question's text.
-            3. If a duplicate is found, return False to indicate the question is not unique.
-            4. If no duplicates are found, return True, indicating the question is unique and can be added to the quiz.
+        Validate a quiz question for uniqueness within the generated quiz.
 
         Parameters:
         - question: A dictionary representing the generated quiz question, expected to contain at least a "question" key.
@@ -164,58 +158,9 @@ class QuizGenerator:
         Returns:
         - A boolean value: True if the question is unique, False otherwise.
 
-        Note: This method assumes `question` is a valid dictionary and `question_bank` has been properly initialized.
         """
-        ##### YOUR CODE HERE #####
-        # Consider missing 'question' key as invalid in the dict object
+
         # Check if a question with the same text already exists in the self.question_bank
-        ##### YOUR CODE HERE #####
+        is_unique = question.get("question",'') not in [qn["question"] for qn in self.question_bank]
+
         return is_unique
-
-
-# Test Generating the Quiz
-if __name__ == "__main__":
-    
-    embed_config = {
-        "model_name": "textembedding-gecko@003",
-        "project": "YOUR-PROJECT-ID-HERE",
-        "location": "us-central1"
-    }
-    
-    screen = st.empty()
-    with screen.container():
-        st.header("Quiz Builder")
-        processor = DocumentProcessor()
-        processor.ingest_documents()
-    
-        embed_client = EmbeddingClient(**embed_config) # Initialize from Task 4
-    
-        chroma_creator = ChromaCollectionCreator(processor, embed_client)
-    
-        question = None
-        question_bank = None
-    
-        with st.form("Load Data to Chroma"):
-            st.subheader("Quiz Builder")
-            st.write("Select PDFs for Ingestion, the topic for the quiz, and click Generate!")
-            
-            topic_input = st.text_input("Topic for Generative Quiz", placeholder="Enter the topic of the document")
-            questions = st.slider("Number of Questions", min_value=1, max_value=10, value=1)
-            
-            submitted = st.form_submit_button("Submit")
-            if submitted:
-                chroma_creator.create_chroma_collection()
-                
-                st.write(topic_input)
-                
-                # Test the Quiz Generator
-                generator = QuizGenerator(topic_input, questions, chroma_creator)
-                question_bank = generator.generate_quiz()
-                question = question_bank[0]
-
-    if question_bank:
-        screen.empty()
-        with st.container():
-            st.header("Generated Quiz Question: ")
-            for question in question_bank:
-                st.write(question)

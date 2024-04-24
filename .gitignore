@@ -1,8 +1,11 @@
 env/
 db/
+tasks/
 __pycache__/
 application_key.json
 ai-data.json
+auth.json
+constants.py
 
 # Tasks
 *_solution.py
